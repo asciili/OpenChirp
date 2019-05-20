@@ -8,10 +8,13 @@ import android.media.AudioManager;
 import android.media.AudioTrack;
 import android.os.AsyncTask;
 import android.support.annotation.NonNull;
+import android.support.v7.app.AlertDialog;
 import android.support.v7.app.AppCompatActivity;
 import android.os.Bundle;
 import android.util.Log;
 import android.view.View;
+import android.widget.EditText;
+import android.widget.Toast;
 
 import com.google.zxing.common.reedsolomon.GenericGF;
 import com.google.zxing.common.reedsolomon.ReedSolomonDecoder;
@@ -42,6 +45,7 @@ public class MainActivity extends AppCompatActivity {
     private static final int WRITE_NUMBER_OF_SAMPLES    = (int)(MainActivity.FACTORY_CHIRP.getEncodedLength() * (MainActivity.FACTORY_CHIRP.getSymbolPeriodMs() / 1000.0f) * MainActivity.WRITE_AUDIO_RATE_SAMPLE_HZ);
     private static final int READ_NUMBER_OF_SAMPLES     = ((int)((MainActivity.FACTORY_CHIRP.getSymbolPeriodMs() / 1000.0f) * MainActivity.WRITE_AUDIO_RATE_SAMPLE_HZ));
     private static final int READ_SUBSAMPLING_FACTOR    = 9;
+    private EditText mTxtReceive;
 
     /** Creates a ChirpFactory from a ChirpBuffer. */
     public static final String getChirp(final int[] pChirpBuffer, final int pChirpLength) {
@@ -135,6 +139,14 @@ public class MainActivity extends AppCompatActivity {
                 MainActivity.onGaydecki(MainActivity.this.getReedSolomonDecoder(), MainActivity.this.getSampleBuffer(), MainActivity.this.getConfidenceBuffer(), MainActivity.READ_SUBSAMPLING_FACTOR, new ChirpFactory.IListener() { @Override public final void onChirp(final String pMessage) {
                     // Print the chirp.
                     Log.d(TAG, "Rx(" + pMessage + ")");
+                    runOnUiThread(new Runnable() {
+                                      @Override
+                                      public void run() {
+                                          mTxtReceive.setText(pMessage);
+                                      }
+                                  }
+                    );
+
                     // Clear the buffer; prevent multiple chirps coming through.
                     Arrays.fill(MainActivity.this.getSampleBuffer(),    -1.0);
                     Arrays.fill(MainActivity.this.getConfidenceBuffer(), 0.0);
@@ -171,12 +183,24 @@ public class MainActivity extends AppCompatActivity {
                 return this.mPitchProcessor;
             }
         });
+        mTxtReceive = ((EditText) findViewById(R.id.txtRX));
+        this.findViewById(R.id.btnClear).setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+
+                mTxtReceive.setText("");
+            }
+        });
         // Register an OnTouchListener.
-        this.findViewById(R.id.rl_activity_main).setOnClickListener(new View.OnClickListener() { @Override public final void onClick(final View pView) {
+        this.findViewById(R.id.btnSend).setOnClickListener(new View.OnClickListener() { @Override public final void onClick(final View pView) {
             // Are we not already chirping?
             if(!MainActivity.this.isChirping()) {
                 // Declare the Message.
-                final String lMessage = "datadatada";//"datadatada";//"parrotbill"; // hj05142014
+                final String lMessage = ((EditText)findViewById(R.id.txtTX)).getText().toString();// = "datadatada";//"datadatada";//"parrotbill"; // hj05142014
+                if(lMessage.length() != FACTORY_CHIRP.getPayloadLength()) {
+                    new AlertDialog.Builder(MainActivity.this).setMessage("length must be " + FACTORY_CHIRP.getPayloadLength()).show();
+                    return;
+                }
                 // ChirpFactory the message.
                 MainActivity.this.chirp(lMessage);
             }
