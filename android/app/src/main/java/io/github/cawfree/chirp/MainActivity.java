@@ -33,7 +33,6 @@ import be.tarsos.dsp.pitch.PitchDetectionResult;
 import be.tarsos.dsp.pitch.PitchProcessor;
 
 public class MainActivity extends AppCompatActivity {
-
     /* Logging. */
     private static final String TAG = "chirp.io";
 
@@ -45,6 +44,7 @@ public class MainActivity extends AppCompatActivity {
     private static final int WRITE_NUMBER_OF_SAMPLES    = (int)(MainActivity.FACTORY_CHIRP.getEncodedLength() * (MainActivity.FACTORY_CHIRP.getSymbolPeriodMs() / 1000.0f) * MainActivity.WRITE_AUDIO_RATE_SAMPLE_HZ);
     private static final int READ_NUMBER_OF_SAMPLES     = ((int)((MainActivity.FACTORY_CHIRP.getSymbolPeriodMs() / 1000.0f) * MainActivity.WRITE_AUDIO_RATE_SAMPLE_HZ));
     private static final int READ_SUBSAMPLING_FACTOR    = 9;
+    public static final int REQUEST_CODE = 1;
     private EditText mTxtReceive;
 
     /** Creates a ChirpFactory from a ChirpBuffer. */
@@ -99,8 +99,13 @@ public class MainActivity extends AppCompatActivity {
         super.onCreate(pSavedInstanceState);
         // Define the ContentView.
         this.setContentView(R.layout.activity_main);
+
         if(checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
-            requestPermissions(new String [] {Manifest.permission.RECORD_AUDIO} , 0);
+            if(shouldShowRequestPermissionRationale(Manifest.permission.RECORD_AUDIO)){
+                Log.i(TAG, "shouldShowRequestPermissionRationale=1");
+                new AlertDialog.Builder(this).setMessage("record audio permission is needed").show();
+            }
+            requestPermissions(new String [] {Manifest.permission.RECORD_AUDIO} , REQUEST_CODE);
         }
         // Allocate the AudioTrack; this is how we'll be generating continuous audio.
         this.mAudioTrack  = new AudioTrack(AudioManager.STREAM_MUSIC, MainActivity.WRITE_AUDIO_RATE_SAMPLE_HZ, AudioFormat.CHANNEL_OUT_MONO, AudioFormat.ENCODING_PCM_16BIT, MainActivity.WRITE_NUMBER_OF_SAMPLES, AudioTrack.MODE_STREAM);
@@ -282,6 +287,11 @@ public class MainActivity extends AppCompatActivity {
 
     /** Handle a permissions result. */
     @Override public final void onRequestPermissionsResult(final int pRequestCode, final @NonNull String[] pPermissions, final @NonNull int[] pGrantResults) {
+        if(pRequestCode == REQUEST_CODE &&  Arrays.asList(pGrantResults).contains(Manifest.permission.RECORD_AUDIO)){
+            Log.i(TAG, "Permission granted");
+        } else {
+            Toast.makeText(this, "Permission denied", Toast.LENGTH_SHORT).show();
+        }
         super.onRequestPermissionsResult(pRequestCode, pPermissions, pGrantResults);
     }
 
