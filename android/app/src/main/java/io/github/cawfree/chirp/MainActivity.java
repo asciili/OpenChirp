@@ -1,5 +1,8 @@
 package io.github.cawfree.chirp;
 
+import android.Manifest;
+import android.content.Context;
+import android.content.pm.PackageManager;
 import android.media.AudioFormat;
 import android.media.AudioManager;
 import android.media.AudioTrack;
@@ -92,6 +95,9 @@ public class MainActivity extends AppCompatActivity {
         super.onCreate(pSavedInstanceState);
         // Define the ContentView.
         this.setContentView(R.layout.activity_main);
+        if(checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(new String [] {Manifest.permission.RECORD_AUDIO} , 0);
+        }
         // Allocate the AudioTrack; this is how we'll be generating continuous audio.
         this.mAudioTrack  = new AudioTrack(AudioManager.STREAM_MUSIC, MainActivity.WRITE_AUDIO_RATE_SAMPLE_HZ, AudioFormat.CHANNEL_OUT_MONO, AudioFormat.ENCODING_PCM_16BIT, MainActivity.WRITE_NUMBER_OF_SAMPLES, AudioTrack.MODE_STREAM);
         this.mAudioThread = null;
