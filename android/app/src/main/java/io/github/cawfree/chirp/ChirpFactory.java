@@ -4,8 +4,6 @@ package io.github.cawfree.chirp;
  * Created by cawfree on 05/10/17.
  */
 
-import android.util.Log;
-
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
@@ -19,7 +17,10 @@ public class ChirpFactory {
 
     /* Default Declarations. */
     public static final int                 DEFAULT_FREQUENCY_BASE = 1760;
-    public static final ChirpFactory.Range  DEFAULT_RANGE          = new Range("0123456789abcdefghijklmnopqrstuv", 0b00100101, 31); /** TODO: i.e. 2^5 - 1. */
+    public static final ChirpFactory.Range DEFAULT_RANGE = new Range(".0123456789abcdefghijklmnopqrst ", 0b00100101, 31);
+    /**
+     * TODO: i.e. 2^5 - 1.
+     */
     public static final String              DEFAULT_IDENTIFIER     = "hj";
     public static final int                 DEFAULT_LENGTH_PAYLOAD = 10;
     public static final int                 DEFAULT_LENGTH_CRC     = 8;

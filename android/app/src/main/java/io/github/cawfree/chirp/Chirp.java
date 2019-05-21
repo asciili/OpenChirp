@@ -47,6 +47,8 @@ class Chirp {
     public interface  onReceiveListener {
         void OnReceive(String message);
     }
+
+    private onReceiveListener mListener = null;
     /** Creates a ChirpFactory from a ChirpBuffer. */
     public static final String getChirp(final int[] pChirpBuffer, final int pChirpLength) {
         // Declare the ChirpFactory.
@@ -176,85 +178,52 @@ class Chirp {
         return lIndices;
     }
 
-    public void init(final onReceiveListener listener) {
-
+    Chirp() {
         // Allocate the AudioTrack; this is how we'll be generating continuous audio.
-        this.mAudioTrack  = new AudioTrack(AudioManager.STREAM_MUSIC, Chirp.WRITE_AUDIO_RATE_SAMPLE_HZ, AudioFormat.CHANNEL_OUT_MONO, AudioFormat.ENCODING_PCM_16BIT, Chirp.WRITE_NUMBER_OF_SAMPLES, AudioTrack.MODE_STREAM);
+        this.mAudioTrack = new AudioTrack(AudioManager.STREAM_MUSIC, Chirp.WRITE_AUDIO_RATE_SAMPLE_HZ, AudioFormat.CHANNEL_OUT_MONO, AudioFormat.ENCODING_PCM_16BIT, Chirp.WRITE_NUMBER_OF_SAMPLES, AudioTrack.MODE_STREAM);
         this.mAudioThread = null;
         // Declare the Galois Field. (5-bit, using root polynomial a^5 + a^2 + 1.)
-        final GenericGF lGenericGF          = new GenericGF(FACTORY_CHIRP.getRange().getGaloisPolynomial(), Chirp.FACTORY_CHIRP.getRange().getFrameLength() + 1, 1);
+        final GenericGF lGenericGF = new GenericGF(FACTORY_CHIRP.getRange().getGaloisPolynomial(), Chirp.FACTORY_CHIRP.getRange().getFrameLength() + 1, 1);
         // Allocate the ReedSolomonEncoder and ReedSolomonDecoder.
         this.mReedSolomonEncoder = new ReedSolomonEncoder(lGenericGF);
         this.mReedSolomonDecoder = new ReedSolomonDecoder(lGenericGF);
         // By default, we won't be chirping.
-        this.mChirping           = false;
+        this.mChirping = false;
         // Define whether we should listen to our own chirps.
-        this.mSampleSelf         = true;
+        this.mSampleSelf = true;
         // Declare the SampleBuffer; capable of storing an entire chirp, with each symbol sampled at the sub-sampling rate.
-        this.mSampleBuffer       = new double[Chirp.READ_SUBSAMPLING_FACTOR * Chirp.FACTORY_CHIRP.getEncodedLength()];
+        this.mSampleBuffer = new double[Chirp.READ_SUBSAMPLING_FACTOR * Chirp.FACTORY_CHIRP.getEncodedLength()];
         // Allocate the ConfidenceBuffer; declares the corresponding confidence for each sample.
-        this.mConfidenceBuffer   = this.getSampleBuffer().clone();
-        // Allocate the AudioDispatcher. (Note; requires dangerous permissions!)
-        this.mAudioDispatcher    = AudioDispatcherFactory.fromDefaultMicrophone(Chirp.WRITE_AUDIO_RATE_SAMPLE_HZ, Chirp.READ_NUMBER_OF_SAMPLES, 0); /** TODO: Abstract constants. */
-        // Define a Custom AudioProcessor.
-        this.getAudioDispatcher().addAudioProcessor(new AudioProcessor() {
-            /* Member Variables. */
-            private final PitchProcessor mPitchProcessor = new PitchProcessor(PitchProcessor.PitchEstimationAlgorithm.FFT_YIN, Chirp.WRITE_AUDIO_RATE_SAMPLE_HZ, (Chirp.READ_NUMBER_OF_SAMPLES / Chirp.READ_SUBSAMPLING_FACTOR), new PitchDetectionHandler() { @Override public final void handlePitch(final PitchDetectionResult pPitchDetectionResult, final AudioEvent pAudioEvent) {
-                // Are we currently chirping?
-                if(Chirp.this.isChirping()) {
-                    // Are we not allowed to sample ourself?
-                    if(!Chirp.this.isSampleSelf()) {
-                        // Don't log the transactions.
-                        return;
-                    }
-                }
-                // Buffer the Pitch and the corresponding Confidence.
-                Chirp.push(Chirp.this.getSampleBuffer(),     pPitchDetectionResult.getPitch());
-                Chirp.push(Chirp.this.getConfidenceBuffer(), pPitchDetectionResult.getProbability());
-                // Process the signal.
-                Chirp.onGaydecki(Chirp.this.getReedSolomonDecoder(), Chirp.this.getSampleBuffer(), Chirp.this.getConfidenceBuffer(), Chirp.READ_SUBSAMPLING_FACTOR, new ChirpFactory.IListener() { @Override public final void onChirp(final String pMessage) {
-                    // Print the chirp.
-                    Log.d(TAG, "Rx(" + pMessage + ")");
-                    listener.OnReceive(pMessage);
-                    // Clear the buffer; prevent multiple chirps coming through.
-                    Arrays.fill(Chirp.this.getSampleBuffer(),    -1.0);
-                    Arrays.fill(Chirp.this.getConfidenceBuffer(), 0.0);
-                } });
-            } });
-            /** When processing audio... */
-            @Override public final boolean process(final AudioEvent pAudioEvent) {
-                // Declare the TarsosDSPFormat; essentially make a safe copy of the existing setup, that recognizes the buffer has been split up.
-                final TarsosDSPAudioFormat lTarsosDSPAudioFormat = new TarsosDSPAudioFormat(getAudioDispatcher().getFormat().getEncoding(), getAudioDispatcher().getFormat().getSampleRate(), getAudioDispatcher().getFormat().getSampleSizeInBits() / Chirp.READ_SUBSAMPLING_FACTOR, getAudioDispatcher().getFormat().getChannels(), getAudioDispatcher().getFormat().getFrameSize() / Chirp.READ_SUBSAMPLING_FACTOR, getAudioDispatcher().getFormat().getFrameRate(), getAudioDispatcher().getFormat().isBigEndian(), getAudioDispatcher().getFormat().properties());
-                // Fetch the Floats.
-                final float[]    lFloats     = pAudioEvent.getFloatBuffer();
-                // Calculate the FrameSize.
-                final int        lFrameSize  = (lFloats.length / Chirp.READ_SUBSAMPLING_FACTOR);
-                // Iterate across the Floats.
-                for(int i = 0; i < (lFloats.length - lFrameSize); i += lFrameSize) {
-                    // Segment the buffer.
-                    final float[] lSegment = Arrays.copyOfRange(lFloats, i, i + lFrameSize);
-                    // Allocate an AudioEvent.
-                    final AudioEvent lAudioEvent = new AudioEvent(lTarsosDSPAudioFormat);
-                    // Assign the Segment.
-                    lAudioEvent.setFloatBuffer(lSegment);
-                    // Export the AudioEvent to the PitchProessor.
-                    this.getPitchProcessor().process(lAudioEvent);
-                }
-                // Assert that the event was handled.
-                return true;
-            }
-            /** Once Processing is Finished... */
-            @Override public final void processingFinished() {
-                // Export the event to the PitchProcessor.
-            }
-            /* Getters. */
-            private final PitchProcessor getPitchProcessor() {
-                return this.mPitchProcessor;
-            }
-        });
-
+        this.mConfidenceBuffer = this.getSampleBuffer().clone();
     }
 
+    void createAudioDispatcher() {
+        try {
+            // Allocate the AudioDispatcher. (Note; requires dangerous permissions!)
+            this.mAudioDispatcher = AudioDispatcherFactory.fromDefaultMicrophone(Chirp.WRITE_AUDIO_RATE_SAMPLE_HZ, Chirp.READ_NUMBER_OF_SAMPLES, 0); /** TODO: Abstract constants. */
+            // Define a Custom AudioProcessor.
+            this.getAudioDispatcher().addAudioProcessor(new MyAudioProcessor());
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
+    void start() {
+        if (getAudioDispatcher() == null) {
+            createAudioDispatcher();
+        }
+        // Allocate the AudioThread.
+        setAudioThread(new Thread(getAudioDispatcher()));
+        // Start the AudioThread.
+        getAudioThread().start();
+    }
+
+    void stop() {
+        // Stop the AudioDispatcher; implicitly stops the owning Thread.
+        if (getAudioDispatcher() != null) {
+            getAudioDispatcher().stop();
+        }
+    }
     /** Encodes and generates a chirp Message. */
     public final void chirp(String pMessage) throws UnsupportedOperationException {
         // Is the message the correct length?
@@ -284,11 +253,11 @@ class Chirp {
         // Fetch the indices of the Message.
         Chirp.indices(pMessage, lChirpBuffer, 0);
         // Encode the Bytes.
-        Chirp.this.getReedSolomonEncoder().encode(lChirpBuffer, Chirp.FACTORY_CHIRP.getErrorLength());
+        getReedSolomonEncoder().encode(lChirpBuffer, Chirp.FACTORY_CHIRP.getErrorLength());
         // Return the ChirpFactory.
         final String lChirp = Chirp.getChirp(lChirpBuffer, pMessage.length()); // "hj050422014jikhif"; (This will work with ChirpFactory Share!)
         // ChirpFactory-y. (Period is in milliseconds.)
-        Chirp.this.chirp(lChirp, Chirp.FACTORY_CHIRP.getSymbolPeriodMs());
+        chirp(lChirp, Chirp.FACTORY_CHIRP.getSymbolPeriodMs());
     }
 
     /** Produces a chirp. */
@@ -298,25 +267,25 @@ class Chirp {
             /** Initialize the play. */
             @Override protected final void onPreExecute() {
                 // Assert that we're chirping.
-                Chirp.this.setChirping(true);
+                setChirping(true);
                 // Play the AudioTrack.
-                Chirp.this.getAudioTrack().play();
+                getAudioTrack().play();
             }
             /** Threaded audio generation. */
             @Override protected Void doInBackground(final Void[] pIsUnused) {
                 // Re-buffer the new tone.
-                final byte[] lChirp = Chirp.this.onGenerateChirp(pEncodedChirp, pPeriod);
+                final byte[] lChirp = onGenerateChirp(pEncodedChirp, pPeriod);
                 // Write the ChirpFactory to the Audio buffer.
-                Chirp.this.getAudioTrack().write(lChirp, 0, lChirp.length);
+                getAudioTrack().write(lChirp, 0, lChirp.length);
                 // Satisfy the parent.
                 return null;
             }
             /** Cyclic. */
             @Override protected final void onPostExecute(Void pIsUnused) {
                 // Stop the AudioTrack.
-                Chirp.this.getAudioTrack().stop();
+                getAudioTrack().stop();
                 // Assert that we're no longer chirping.
-                Chirp.this.setChirping(false);
+                setChirping(false);
             }
         };
         // Execute the AsyncTask on the pre-prepared ThreadPool.
@@ -436,5 +405,88 @@ class Chirp {
 
     private final double[] getConfidenceBuffer() {
         return this.mConfidenceBuffer;
+    }
+
+    protected final void setOnReceiveListener(final onReceiveListener listener) {
+        this.mListener = listener;
+    }
+
+    private class MyAudioProcessor implements AudioProcessor {
+        /* Member Variables. */
+        private final PitchProcessor mPitchProcessor;
+
+        public MyAudioProcessor() {
+            mPitchProcessor = new PitchProcessor(PitchProcessor.PitchEstimationAlgorithm.FFT_YIN, Chirp.WRITE_AUDIO_RATE_SAMPLE_HZ, (Chirp.READ_NUMBER_OF_SAMPLES / Chirp.READ_SUBSAMPLING_FACTOR), new MyPitchDetectionHandler());
+        }
+
+        /**
+         * When processing audio...
+         */
+        @Override
+        public final boolean process(final AudioEvent pAudioEvent) {
+            // Declare the TarsosDSPFormat; essentially make a safe copy of the existing setup, that recognizes the buffer has been split up.
+            final TarsosDSPAudioFormat lTarsosDSPAudioFormat = new TarsosDSPAudioFormat(getAudioDispatcher().getFormat().getEncoding(), getAudioDispatcher().getFormat().getSampleRate(), getAudioDispatcher().getFormat().getSampleSizeInBits() / Chirp.READ_SUBSAMPLING_FACTOR, getAudioDispatcher().getFormat().getChannels(), getAudioDispatcher().getFormat().getFrameSize() / Chirp.READ_SUBSAMPLING_FACTOR, getAudioDispatcher().getFormat().getFrameRate(), getAudioDispatcher().getFormat().isBigEndian(), getAudioDispatcher().getFormat().properties());
+            // Fetch the Floats.
+            final float[] lFloats = pAudioEvent.getFloatBuffer();
+            // Calculate the FrameSize.
+            final int lFrameSize = (lFloats.length / Chirp.READ_SUBSAMPLING_FACTOR);
+            // Iterate across the Floats.
+            for (int i = 0; i < (lFloats.length - lFrameSize); i += lFrameSize) {
+                // Segment the buffer.
+                final float[] lSegment = Arrays.copyOfRange(lFloats, i, i + lFrameSize);
+                // Allocate an AudioEvent.
+                final AudioEvent lAudioEvent = new AudioEvent(lTarsosDSPAudioFormat);
+                // Assign the Segment.
+                lAudioEvent.setFloatBuffer(lSegment);
+                // Export the AudioEvent to the PitchProessor.
+                this.getPitchProcessor().process(lAudioEvent);
+            }
+            // Assert that the event was handled.
+            return true;
+        }
+
+        /**
+         * Once Processing is Finished...
+         */
+        @Override
+        public final void processingFinished() {
+            // Export the event to the PitchProcessor.
+        }
+
+        /* Getters. */
+        private final PitchProcessor getPitchProcessor() {
+            return this.mPitchProcessor;
+        }
+
+        private class MyPitchDetectionHandler implements PitchDetectionHandler {
+            @Override
+            public final void handlePitch(final PitchDetectionResult pPitchDetectionResult, final AudioEvent pAudioEvent) {
+                // Are we currently chirping?
+                if (isChirping()) {
+                    // Are we not allowed to sample ourself?
+                    if (!isSampleSelf()) {
+                        // Don't log the transactions.
+                        return;
+                    }
+                }
+                // Buffer the Pitch and the corresponding Confidence.
+                Chirp.push(getSampleBuffer(), pPitchDetectionResult.getPitch());
+                Chirp.push(getConfidenceBuffer(), pPitchDetectionResult.getProbability());
+                // Process the signal.
+                Chirp.onGaydecki(getReedSolomonDecoder(), getSampleBuffer(), getConfidenceBuffer(), Chirp.READ_SUBSAMPLING_FACTOR, new ChirpFactory.IListener() {
+                    @Override
+                    public final void onChirp(final String pMessage) {
+                        // Print the chirp.
+                        Log.d(TAG, "Rx(" + pMessage + ")");
+                        if (mListener != null) {
+                            mListener.OnReceive(pMessage);
+                        }
+                        // Clear the buffer; prevent multiple chirps coming through.
+                        Arrays.fill(getSampleBuffer(), -1.0);
+                        Arrays.fill(getConfidenceBuffer(), 0.0);
+                    }
+                });
+            }
+        }
     }
 }
